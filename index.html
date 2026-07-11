@@ -287,7 +287,7 @@
                 if (idx !== -1) {
                     mapping[req] = idx;
                 } else {
-                    missing.append(req);
+                    missing.push(req);
                 }
             }
             if (missing.length > 0) {
@@ -317,8 +317,8 @@
                 if (!institutions[itemKeyStr]) {
                     institutions[itemKeyStr] = { sector_code: null, country_code: null };
                 }
-                const sector = row[sector_idx];
-                const country = row[country_idx];
+                const sector = row[sectorIdx];
+                const country = row[countryIdx];
                 if (sector !== null && institutions[itemKeyStr].sector_code === null) {
                     institutions[itemKeyStr].sector_code = String(sector).trim();
                 }
