@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taxation Coding Verifier | SIX Financial</title>
+    <!-- Tailwind CSS for rich aesthetics -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS for reading Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- ExcelJS for writing beautifully formatted Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <!-- Plus Jakarta Sans Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0F172A;
+            color: #F8FAFC;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1E293B;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748B;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <!-- App Container -->
+    <div class="max-w-7xl mx-auto">
+
+        <!-- Top Header Banner -->
+        <header class="bg-gradient-to-r from-indigo-600 to-violet-600 p-6 md:p-8 rounded-2xl shadow-xl mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
+                    <span>💼</span> Taxation Coding Verifier
+                </h1>
+                <p class="text-indigo-100 text-sm mt-1 max-w-xl">
+                    Reference Data Verification Tool for SIX Financial. Upload a daily GKTK Excel export to verify Valor taxation and income codings.
+                </p>
+            </div>
+            <!-- Upload New File Button (hidden on landing page) -->
+            <button id="btnUploadNew" class="hidden bg-slate-900/60 hover:bg-slate-900/80 text-slate-100 border border-slate-700/60 py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center gap-2">
+                🔄 Upload New File
+            </button>
+        </header>
+
+        <!-- 1. LANDING PAGE - Middle Centered Upload Box -->
+        <main id="landingPage" class="max-w-xl mx-auto my-16 text-center">
+            <div class="mb-6">
+                <span class="text-6xl inline-block filter drop-shadow-[0_0_15px_rgba(99,102,241,0.4)]">💼</span>
+                <h2 class="text-2xl font-bold mt-4 text-slate-100">Upload GKTK Export</h2>
+                <p class="text-slate-400 text-sm mt-1">Select a daily-exported workbook to verify Valor codings</p>
+            </div>
+            
+            <!-- Drag & Drop Card -->
+            <label for="fileUploader" class="block bg-slate-800/50 hover:bg-slate-800/80 border-2 border-dashed border-indigo-500/50 hover:border-indigo-500/80 rounded-2xl p-8 cursor-pointer transition shadow-2xl relative">
+                <input type="file" id="fileUploader" class="hidden" accept=".xlsx" />
+                <div class="flex flex-col items-center gap-3">
+                    <span class="text-4xl text-indigo-400">📤</span>
+                    <span class="font-semibold text-slate-200">Click to Browse or Drag & Drop</span>
+                    <span class="text-xs text-slate-400">Only .xlsx spreadsheets are supported</span>
+                </div>
+            </label>
+
+            <!-- Loading Spinner (hidden by default) -->
+            <div id="spinner" class="hidden mt-6 flex flex-col items-center gap-3">
+                <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500"></div>
+                <p class="text-sm text-slate-400">Processing workbook and executing rules engine...</p>
+            </div>
+
+            <!-- Error Box -->
+            <div id="errorBox" class="hidden mt-6 bg-red-900/40 border border-red-500/40 text-red-200 p-4 rounded-xl text-sm text-left">
+            </div>
+
+            <!-- Guidelines -->
+            <div class="mt-12 bg-slate-900/40 border border-slate-800 p-4 rounded-xl text-left text-xs text-slate-400 space-y-1">
+                <p class="font-semibold text-slate-300 mb-1">Resilience Architecture:</p>
+                <p>• Columns & headers are resolved dynamically on Row 7. Rows 1–6 metadata are safely ignored.</p>
+                <p>• Collapses grouped duplicate rows per instrument using dynamic first-non-null Item Key aggregation.</p>
+                <p>• Extracts and utilizes file-embedded export timestamps for short-duration boundary checks.</p>
+            </div>
+        </main>
+
+        <!-- 2. MAIN RESULTS PAGE (hidden by default) -->
+        <main id="resultsPage" class="hidden space-y-6">
+
+            <!-- Active File Info & Export Date Info -->
+            <div class="bg-slate-900/30 border border-slate-800/60 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-sm">
+                <div class="flex items-center gap-2">
+                    <span class="text-slate-400 font-semibold">Active File:</span>
+                    <span id="txtFileName" class="bg-slate-800 text-slate-200 py-1 px-2 rounded-md font-mono text-xs"></span>
+                    <span id="txtFileSize" class="text-slate-400 text-xs"></span>
+                </div>
+                <div class="flex items-center gap-2 text-indigo-300">
+                    <span>📅</span>
+                    <span class="font-semibold">Export Date:</span>
+                    <span id="txtExportDate"></span>
+                </div>
+            </div>
+
+            <!-- KPI Metric Cards Grid -->
+            <section class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900/80 border border-slate-700/60 rounded-xl p-4 text-center shadow-lg">
+                    <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Bonds</div>
+                    <div id="kpiTotal" class="text-3xl font-bold text-slate-100 mt-2">0</div>
+                </div>
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900/80 border border-slate-700/60 border-l-4 border-l-emerald-500 rounded-xl p-4 text-center shadow-lg">
+                    <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">OK</div>
+                    <div id="kpiOk" class="text-3xl font-bold text-emerald-500 mt-2">0</div>
+                </div>
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900/80 border border-slate-700/60 border-l-4 border-l-teal-500 border-dashed rounded-xl p-4 text-center shadow-lg">
+                    <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">OK (Verify)</div>
+                    <div id="kpiVerify" class="text-3xl font-bold text-teal-400 mt-2">0</div>
+                </div>
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900/80 border border-slate-700/60 border-l-4 border-l-red-500 rounded-xl p-4 text-center shadow-lg">
+                    <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Errors</div>
+                    <div id="kpiErrors" class="text-3xl font-bold text-slate-100 mt-2">0</div>
+                </div>
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900/80 border border-slate-700/60 border-l-4 border-l-amber-500 rounded-xl p-4 text-center shadow-lg">
+                    <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Manual Review</div>
+                    <div id="kpiManual" class="text-3xl font-bold text-slate-100 mt-2">0</div>
+                </div>
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900/80 border border-slate-700/60 border-l-4 border-l-slate-500 rounded-xl p-4 text-center shadow-lg">
+                    <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Pending</div>
+                    <div id="kpiPending" class="text-3xl font-bold text-slate-100 mt-2">0</div>
+                </div>
+            </section>
+
+            <!-- Search, Filter Tabs & Download Controls Row -->
+            <section class="bg-slate-900/20 border border-slate-800 rounded-2xl p-4 flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
+                <!-- Search bar -->
+                <div class="w-full lg:w-72">
+                    <input type="text" id="txtSearch" placeholder="🔍 Search Key or Product..." class="w-full bg-slate-800 border border-slate-700/60 text-slate-100 placeholder-slate-400 text-sm rounded-xl py-2.5 px-4 focus:outline-none focus:border-indigo-500 transition" />
+                </div>
+                
+                <!-- Status Filter Pills -->
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <button class="filter-pill bg-indigo-600 text-white font-semibold py-2 px-3 rounded-lg border border-indigo-500/30 transition" data-filter="Actionable">Actionable</button>
+                    <button class="filter-pill bg-slate-800 text-slate-300 font-semibold py-2 px-3 rounded-lg border border-slate-700/60 transition" data-filter="All">All</button>
+                    <button class="filter-pill bg-slate-800 text-slate-300 font-semibold py-2 px-3 rounded-lg border border-slate-700/60 transition" data-filter="ERROR">Errors Only</button>
+                    <button class="filter-pill bg-slate-800 text-slate-300 font-semibold py-2 px-3 rounded-lg border border-slate-700/60 transition" data-filter="MANUAL">Manual Only</button>
+                    <button class="filter-pill bg-slate-800 text-slate-300 font-semibold py-2 px-3 rounded-lg border border-slate-700/60 transition" data-filter="PENDING">Pending Only</button>
+                    <button class="filter-pill bg-slate-800 text-slate-300 font-semibold py-2 px-3 rounded-lg border border-slate-700/60 transition" data-filter="OK">OK Only</button>
+                </div>
+
+                <!-- Exporter Buttons -->
+                <div class="flex items-center gap-2">
+                    <button id="btnDlFiltered" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-2.5 px-4 rounded-xl text-xs font-semibold border border-slate-700/60 transition flex items-center justify-center gap-1.5">
+                        📥 Download Filtered
+                    </button>
+                    <button id="btnDlAll" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 px-4 rounded-xl text-xs font-semibold border border-indigo-500/30 transition flex items-center justify-center gap-1.5">
+                        📥 Download Complete
+                    </button>
+                </div>
+            </section>
+
+            <!-- Results Grid Table -->
+            <section class="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/10 shadow-2xl">
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-left text-sm">
+                        <thead>
+                            <tr class="bg-slate-900 border-b border-slate-800">
+                                <th class="p-4 font-semibold text-slate-200">Item Key</th>
+                                <th class="p-4 font-semibold text-slate-200 text-center">Row</th>
+                                <th class="p-4 font-semibold text-slate-200">Product (Prefix)</th>
+                                <th class="p-4 font-semibold text-slate-200">Country</th>
+                                <th class="p-4 font-semibold text-slate-200 text-center">Status</th>
+                                <th class="p-4 font-semibold text-slate-200 w-1/4">Reason</th>
+                                <th class="p-4 font-semibold text-slate-400 text-xs">Expected (Tax/Inc)</th>
+                                <th class="p-4 font-semibold text-slate-400 text-xs">Actual (Tax/Inc)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-slate-800/80">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        // --- 1. CORE RULES ENGINE & PARSING ---
+        function extractCode(val) {
+            if (val === null || val === undefined) return "";
+            const valStr = String(val).trim();
+            if (!valStr) return "";
+            if (valStr.includes('-')) return valStr.split('-')[0].trim();
+            return valStr;
+        }
+
+        function parseDate(val) {
+            if (val instanceof Date && !isNaN(val)) return val;
+            if (typeof val === 'number') {
+                return new Date(Math.round((val - 25569) * 86400 * 1000));
+            }
+            if (typeof val === 'string') {
+                const cleaned = val.trim();
+                let d = new Date(cleaned);
+                if (!isNaN(d)) return d;
+                const parts = cleaned.split('.');
+                if (parts.length === 3) {
+                    d = new Date(parts[2], parts[1] - 1, parts[0]);
+                    if (!isNaN(d)) return d;
+                }
+            }
+            return null;
+        }
+
+        function extractRateAndIsZero(prefix) {
+            if (!prefix) return false;
+            const matches = prefix.match(/\(([^)]*)\)/g);
+            if (matches) {
+                for (let m of matches) {
+                    if (m.toLowerCase().includes('min')) {
+                        return false;
+                    }
+                }
+            }
+            const rateMatch = prefix.match(/(\d+(?:\.\d+)?)\s*%/);
+            if (rateMatch) {
+                const rate = parseFloat(rateMatch[1]);
+                return rate === 0.0;
+            }
+            return false;
+        }
+
+        function isMuniTaxable(suffix) {
+            if (!suffix) return false;
+            const sLower = suffix.toLowerCase();
+            if (/\bnon[- ]?taxable\b|\bnontaxable\b/.test(sLower)) return false;
+            return /\btaxable\b/.test(sLower);
+        }
+
+        function isMortgageRelated(prefix) {
+            if (!prefix) return false;
+            const pLower = prefix.toLowerCase();
+            const keywords = ["mortgage", "morgtage", "remic", "real estate mortgage investment conduit", "collateralized mortgage obligation"];
+            return keywords.some(kw => pLower.includes(kw));
+        }
+
+        function getDiffDays(date1, date2) {
+            const d1 = new Date(date1.getFullYear(), date1.getMonth(), date1.getDate());
+            const d2 = new Date(date2.getFullYear(), date2.getMonth(), date2.getDate());
+            return Math.round((d1 - d2) / (1000 * 60 * 60 * 24));
+        }
+
+        function extractFileTimestamp(rows) {
+            for (let r = 0; r < Math.min(rows.length, 10); r++) {
+                if (rows[r] && rows[r][0] === "Timestamp" && rows[r][1] !== null) {
+                    const dt = parseDate(rows[r][1]);
+                    if (dt) return dt;
+                }
+            }
+            return new Date();
+        }
+
+        function findHeaderRowAndColumnIndices(rows, requiredHeaders) {
+            let headerRowIdx = -1;
+            for (let r = 0; r < Math.min(rows.length, 20); r++) {
+                if (rows[r] && rows[r].includes("Item Key")) {
+                    headerRowIdx = r;
+                    break;
+                }
+            }
+            if (headerRowIdx === -1) {
+                throw new Error("Could not find header row containing 'Item Key' in this sheet.");
+            }
+            const headers = rows[headerRowIdx].map(h => h !== null ? String(h).trim() : null);
+            const mapping = {};
+            const missing = [];
+            for (let req of requiredHeaders) {
+                const idx = headers.indexOf(req);
+                if (idx !== -1) {
+                    mapping[req] = idx;
+                } else {
+                    missing.append(req);
+                }
+            }
+            if (missing.length > 0) {
+                throw new Error(`Required header(s) not found: ${missing.join(', ')}`);
+            }
+            return { headerRowIdx, mapping };
+        }
+
+        function parseInstitutionSheet(sheet) {
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+            const required = ["Item Key", "Sector Code TK", "Country Code"];
+            const { headerRowIdx, mapping } = findHeaderRowAndColumnIndices(rows, required);
+            
+            const institutions = {};
+            const itemKeyIdx = mapping["Item Key"];
+            const sectorIdx = mapping["Sector Code TK"];
+            const countryIdx = mapping["Country Code"];
+
+            for (let r = headerRowIdx + 1; r < rows.length; r++) {
+                const row = rows[r];
+                if (!row) continue;
+                const itemKey = row[itemKeyIdx];
+                if (!itemKey) continue;
+                const itemKeyStr = String(itemKey).trim();
+                if (!itemKeyStr || itemKeyStr.toLowerCase() === 'item key') continue;
+
+                if (!institutions[itemKeyStr]) {
+                    institutions[itemKeyStr] = { sector_code: null, country_code: null };
+                }
+                const sector = row[sector_idx];
+                const country = row[country_idx];
+                if (sector !== null && institutions[itemKeyStr].sector_code === null) {
+                    institutions[itemKeyStr].sector_code = String(sector).trim();
+                }
+                if (country !== null && institutions[itemKeyStr].country_code === null) {
+                    institutions[itemKeyStr].country_code = String(country).trim();
+                }
+            }
+            return institutions;
+        }
+
+        function parseBondsSheet(sheet) {
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+            const required = ["Item Key", "Prefix", "Suffix", "Maturity", "Interest period/usufruct start", "Taxation and reporting", "Income code"];
+            const { headerRowIdx, mapping } = findHeaderRowAndColumnIndices(rows, required);
+
+            const bonds = {};
+            const itemKeyIdx = mapping["Item Key"];
+            const prefixIdx = mapping["Prefix"];
+            const suffixIdx = mapping["Suffix"];
+            const maturityIdx = mapping["Maturity"];
+            const interestStartIdx = mapping["Interest period/usufruct start"];
+            const taxationIdx = mapping["Taxation and reporting"];
+            const incomeCodeIdx = mapping["Income code"];
+            const exportDate = extractFileTimestamp(rows);
+
+            for (let r = headerRowIdx + 1; r < rows.length; r++) {
+                const row = rows[r];
+                if (!row) continue;
+                const itemKey = row[itemKeyIdx];
+                if (!itemKey) continue;
+                const itemKeyStr = String(itemKey).trim();
+                if (!itemKeyStr || itemKeyStr.toLowerCase() === 'item key') continue;
+
+                const prefix = row[prefixIdx];
+                if (prefix === null) continue; // repeating rows skip
+
+                if (bonds[itemKeyStr]) continue;
+
+                const suffix = row[suffixIdx];
+                const maturity = row[maturityIdx];
+                const interestStart = row[interestStartIdx];
+                const taxation = row[taxationIdx];
+                const incomeCode = row[incomeCodeIdx];
+
+                bonds[itemKeyStr] = {
+                    item_key: itemKeyStr,
+                    row_num: r + 1,
+                    prefix: String(prefix).trim(),
+                    suffix: suffix !== null ? String(suffix).trim() : null,
+                    maturity: maturity,
+                    interest_start: interestStart,
+                    taxation: taxation !== null ? String(taxation).trim() : null,
+                    income_code: incomeCode !== null ? String(incomeCode).trim() : null
+                };
+            }
+            return { bonds, exportDate };
+        }
+
+        function verifyBond(bond, institutions, todayDate) {
+            const inst = institutions[bond.item_key];
+            if (!inst) {
+                return {
+                    status: 'MANUAL REVIEW',
+                    reason: "Item Key not found in Institution basic data — cannot verify country/sector.",
+                    expected_tax: 'N/A',
+                    expected_income: 'N/A'
+                };
+            }
+
+            const countryFull = inst.country_code;
+            const countryCode = extractCode(countryFull);
+            const sectorFull = inst.sector_code;
+            const sectorCode = extractCode(sectorFull);
+
+            const actualTax = extractCode(bond.taxation);
+            const actualIncome = extractCode(bond.income_code);
+
+            // Step 0 — US-domicile gate
+            if (countryCode !== "333") {
+                const expectedTax = "";
+                const expectedIncome = "";
+                if (actualTax !== "" || actualIncome !== "") {
+                    return {
+                        status: 'ERROR',
+                        reason: `Taxation Coded for Non US Domicile (Country: ${countryFull || 'Unknown'})`,
+                        expected_tax: 'Blank',
+                        expected_income: 'Blank'
+                    };
+                } else {
+                    return {
+                        status: 'OK',
+                        reason: '',
+                        expected_tax: 'Blank',
+                        expected_income: 'Blank'
+                    };
+                }
+            }
+
+            // Step 1 — Compute the duration
+            const maturityDate = parseDate(bond.maturity);
+            const startDate = parseDate(bond.interest_start);
+
+            let durationApproximated = false;
+            let durationDays = null;
+
+            if (!maturityDate) {
+                return {
+                    status: 'MANUAL REVIEW',
+                    reason: "Maturity date missing — cannot determine duration.",
+                    expected_tax: 'N/A',
+                    expected_income: 'N/A'
+                };
+            }
+
+            if (!startDate) {
+                const approxDuration = getDiffDays(maturityDate, todayDate);
+                if (approxDuration > 365) {
+                    durationDays = approxDuration;
+                    durationApproximated = true;
+                } else {
+                    return {
+                        status: 'MANUAL REVIEW',
+                        reason: "Interest period/usufruct start missing and maturity <1yr out — duration uncertain, verify manually.",
+                        expected_tax: 'N/A',
+                        expected_income: 'N/A'
+                    };
+                }
+            } else {
+                durationDays = getDiffDays(maturityDate, startDate);
+            }
+
+            // Step 2 — Duration ≤ 183 days
+            if (durationDays <= 183) {
+                const expectedTax = "2";
+                const expectedIncome = "";
+                const expectedTaxLabel = "2-US-IRS non taxable,form 1099,QI report.amount";
+                const expectedIncomeLabel = "Blank";
+
+                const isMatch = (actualTax === expectedTax) && (actualIncome === expectedIncome);
+                if (isMatch) {
+                    return {
+                        status: durationApproximated ? "OK (VERIFY)" : "OK",
+                        reason: durationApproximated ? "Interest period/usufruct start missing — duration approximated from today's date; please confirm manually." : "",
+                        expected_tax: expectedTaxLabel,
+                        expected_income: expectedIncomeLabel
+                    };
+                } else {
+                    if (actualTax === "" && actualIncome === "") {
+                        return {
+                            status: "PENDING",
+                            reason: "US security (duration <= 183 days) — not yet coded.",
+                            expected_tax: expectedTaxLabel,
+                            expected_income: expectedIncomeLabel
+                        };
+                    } else {
+                        return {
+                            status: durationApproximated ? "ERROR (VERIFY)" : "ERROR",
+                            reason: durationApproximated
+                                ? `Mismatch (approximated duration <= 183 days) — expected 2/blank, got ${actualTax || 'blank'}/${actualIncome || 'blank'}`
+                                : `Mismatch — rule applied: [duration <= 183 days]. Expected 2/blank, got ${actualTax || 'blank'}/${actualIncome || 'blank'}.`,
+                            expected_tax: expectedTaxLabel,
+                            expected_income: expectedIncomeLabel
+                        };
+                    }
+                }
+            }
+
+            // Step 3 — Duration > 183 days: check for a municipal issuer
+            const isMuni = (sectorCode === "11" || sectorCode === "3");
+
+            if (isMuni) {
+                const suffix = bond.suffix;
+                const suffixTaxable = isMuniTaxable(suffix);
+                const prefix = bond.prefix;
+                const rateIsZero = extractRateAndIsZero(prefix);
+
+                let expectedTax, expectedIncome, expectedTaxLabel, expectedIncomeLabel, ruleName;
+
+                if (suffixTaxable) {
+                    if (rateIsZero) {
+                        expectedTax = "1";
+                        expectedIncome = "30";
+                        expectedTaxLabel = "1-US-IRS taxable and reportable w.1042S or 1099";
+                        expectedIncomeLabel = "30-(IRS 30) Inc.on original issue discount (OID)";
+                        ruleName = "Municipal, taxable (Suffix contains 'Taxable', 0% rate)";
+                    } else {
+                        expectedTax = "1";
+                        expectedIncome = "1";
+                        expectedTaxLabel = "1-US-IRS taxable and reportable w.1042S or 1099";
+                        expectedIncomeLabel = "1-(IRS 01) Interest by US obligors gen.";
+                        ruleName = "Municipal, taxable (Suffix contains 'Taxable', pays interest)";
+                    }
+                } else {
+                    if (rateIsZero) {
+                        expectedTax = "";
+                        expectedIncome = "";
+                        expectedTaxLabel = "Blank";
+                        expectedIncomeLabel = "Blank";
+                        ruleName = "Municipal, non-taxable (default/explicit non-taxable, 0% rate)";
+                    } else {
+                        expectedTax = "2";
+                        expectedIncome = "";
+                        expectedTaxLabel = "2-US-IRS non taxable,form 1099,QI report.amount";
+                        expectedIncomeLabel = "Blank";
+                        ruleName = suffix ? "Municipal, non-taxable (explicit, Suffix contains 'Non-Taxable') — expected 2/blank." : "Municipal, non-taxable (default, Suffix has no 'Taxable' marker) — expected 2/blank.";
+                    }
+                }
+
+                const isMatch = (actualTax === expectedTax) && (actualIncome === expectedIncome);
+                if (isMatch) {
+                    return {
+                        status: durationApproximated ? "OK (VERIFY)" : "OK",
+                        reason: durationApproximated ? "Interest period/usufruct start missing — duration approximated from today's date; please confirm manually." : "",
+                        expected_tax: expectedTaxLabel,
+                        expected_income: expectedIncomeLabel
+                    };
+                } else {
+                    if (actualTax === "" && actualIncome === "") {
+                        return {
+                            status: "PENDING",
+                            reason: `US security (${ruleName}) — not yet coded.`,
+                            expected_tax: expectedTaxLabel,
+                            expected_income: expectedIncomeLabel
+                        };
+                    } else {
+                        let reason = durationApproximated
+                            ? `Mismatch (approximated muni duration >183 days) — ${ruleName.split('—')[0].trim()}. Expected ${expectedTax || 'blank'}/${expectedIncome || 'blank'}, got ${actualTax || 'blank'}/${actualIncome || 'blank'}`
+                            : `Mismatch — rule applied: [${ruleName.split('—')[0].trim()}]. Expected ${expectedTax || 'blank'}/${expectedIncome || 'blank'}, got ${actualTax || 'blank'}/${actualIncome || 'blank'}.`;
+
+                        if (!suffixTaxable && !rateIsZero) {
+                            const sLower = suffix ? suffix.toLowerCase() : "";
+                            if (!/\bnon[- ]?taxable\b|\bnontaxable\b/.test(sLower)) {
+                                reason = "Municipal, non-taxable (default, Suffix has no 'Taxable' marker) — expected 2/blank.";
+                                if (durationApproximated) {
+                                    reason = "Interest period/usufruct start missing — duration approximated from today's date; please confirm manually. " + reason;
+                                }
+                            }
+                        }
+                        return {
+                            status: durationApproximated ? "ERROR (VERIFY)" : "ERROR",
+                            reason: reason,
+                            expected_tax: expectedTaxLabel,
+                            expected_income: expectedIncomeLabel
+                        };
+                    }
+                }
+            }
+
+            // Step 4 — Non-municipal, duration > 183 days
+            const prefix = bond.prefix;
+            const rateIsZero = extractRateAndIsZero(prefix);
+
+            let expectedTax, expectedIncome, expectedTaxLabel, expectedIncomeLabel, ruleDesc;
+
+            if (rateIsZero) {
+                expectedTax = "1";
+                expectedIncome = "30";
+                expectedTaxLabel = "1-US-IRS taxable and reportable w.1042S or 1099";
+                expectedIncomeLabel = "30-(IRS 30) Inc.on original issue discount (OID)";
+                ruleDesc = "0% interest, duration >183 days";
+            } else {
+                const mortgageRelated = isMortgageRelated(prefix);
+                if (mortgageRelated) {
+                    expectedTax = "1";
+                    expectedIncome = "2";
+                    expectedTaxLabel = "1-US-IRS taxable and reportable w.1042S or 1099";
+                    expectedIncomeLabel = "2-(IRS 02) Interest on real property mtg.";
+                    ruleDesc = "mortgage-related, duration >183 days";
+                } else {
+                    expectedTax = "1";
+                    expectedIncome = "1";
+                    expectedTaxLabel = "1-US-IRS taxable and reportable w.1042S or 1099";
+                    expectedIncomeLabel = "1-(IRS 01) Interest by US obligors gen.";
+                    ruleDesc = "interest-bearing, non-mortgage, duration >183 days";
+                }
+            }
+
+            const isMatch = (actualTax === expectedTax) && (actualIncome === expectedIncome);
+            if (isMatch) {
+                return {
+                    status: durationApproximated ? "OK (VERIFY)" : "OK",
+                    reason: durationApproximated ? "Interest period/usufruct start missing — duration approximated from today's date; please confirm manually." : "",
+                    expected_tax: expectedTaxLabel,
+                    expected_income: expectedIncomeLabel
+                };
+            } else {
+                if (actualTax === "" && actualIncome === "") {
+                    return {
+                        status: "PENDING",
+                        reason: `US security (${ruleDesc}) — not yet coded.`,
+                        expected_tax: expectedTaxLabel,
+                        expected_income: expectedIncomeLabel
+                    };
+                } else {
+                    let reason = durationApproximated
+                        ? `Mismatch (approximated duration >183 days) — rule applied: [${ruleDesc}]. Expected ${expectedTax || 'blank'}/${expectedIncome || 'blank'}, got ${actualTax || 'blank'}/${actualIncome || 'blank'}.`
+                        : `Mismatch — rule applied: [${ruleDesc}]. Expected ${expectedTax || 'blank'}/${expectedIncome || 'blank'}, got ${actualTax || 'blank'}/${actualIncome || 'blank'}.`;
+                    if (rateIsZero) {
+                        reason = `Mismatch — rule applied: [0% interest, duration >183 days]. Expected ${expectedTax}/${expectedIncome}, got ${actualTax || 'blank'}/${actualIncome || 'blank'}.`;
+                        if (durationApproximated) {
+                            reason = "Interest period/usufruct start missing — duration approximated from today's date; please confirm manually. " + reason;
+                        }
+                    }
+                    return {
+                        status: durationApproximated ? "ERROR (VERIFY)" : "ERROR",
+                        reason: reason,
+                        expected_tax: expectedTaxLabel,
+                        expected_income: expectedIncomeLabel
+                    };
+                }
+            }
+        }
+
+        // --- 2. DYNAMIC APP CONTROLLER ---
+        let appState = {
+            fileName: "",
+            fileSize: 0,
+            results: [],
+            counts: {
+                "OK": 0, "OK (VERIFY)": 0, "ERROR": 0,
+                "ERROR (VERIFY)": 0, "PENDING": 0, "MANUAL REVIEW": 0
+            },
+            exportTimestamp: null,
+            activeFilter: "Actionable",
+            searchQuery: ""
+        };
+
+        const fileUploader = document.getElementById("fileUploader");
+        const landingPage = document.getElementById("landingPage");
+        const resultsPage = document.getElementById("resultsPage");
+        const spinner = document.getElementById("spinner");
+        const errorBox = document.getElementById("errorBox");
+        const btnUploadNew = document.getElementById("btnUploadNew");
+        const txtFileName = document.getElementById("txtFileName");
+        const txtFileSize = document.getElementById("txtFileSize");
+        const txtExportDate = document.getElementById("txtExportDate");
+        const txtSearch = document.getElementById("txtSearch");
+        const tableBody = document.getElementById("tableBody");
+
+        fileUploader.addEventListener("change", handleFileUpload);
+
+        function handleFileUpload(e) {
+            const files = e.target.files;
+            if (files.length === 0) return;
+            const file = files[0];
+            
+            appState.fileName = file.name;
+            appState.fileSize = file.size;
+
+            spinner.classList.remove("hidden");
+            errorBox.classList.add("hidden");
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const wb = XLSX.read(data, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd' });
+                    
+                    if (!wb.SheetNames.includes("Institution basic data")) {
+                        throw new Error("Could not find sheet 'Institution basic data' in the workbook.");
+                    }
+                    if (!wb.SheetNames.includes("Instrument basic data (Bonds)")) {
+                        throw new Error("Could not find sheet 'Instrument basic data (Bonds)' in the workbook.");
+                    }
+
+                    const instSheet = wb.Sheets["Institution basic data"];
+                    const bondsSheet = wb.Sheets["Instrument basic data (Bonds)"];
+
+                    const institutions = parseInstitutionSheet(instSheet);
+                    const { bonds, exportDate } = parseBondsSheet(bondsSheet);
+
+                    appState.exportTimestamp = exportDate;
+                    appState.results = [];
+                    appState.counts = { "OK": 0, "OK (VERIFY)": 0, "ERROR": 0, "ERROR (VERIFY)": 0, "PENDING": 0, "MANUAL REVIEW": 0 };
+
+                    Object.keys(bonds).forEach(itemKey => {
+                        const bond = bonds[itemKey];
+                        const inst = institutions[itemKey];
+                        const countryLabel = inst ? inst.country_code : "Unknown";
+
+                        const verif = verifyBond(bond, institutions, exportDate);
+                        appState.counts[verif.status]++;
+
+                        appState.results.push({
+                            item_key: bond.item_key,
+                            row_num: bond.row_num,
+                            prefix: bond.prefix,
+                            country: countryLabel,
+                            status: verif.status,
+                            reason: verif.reason,
+                            expected_tax: verif.expected_tax,
+                            expected_income: verif.expected_income,
+                            actual_tax: bond.taxation || "Blank",
+                            actual_income: bond.income_code || "Blank"
+                        });
+                    });
+
+                    appState.results.sort((a, b) => a.row_num - b.row_num);
+
+                    // Switch view
+                    landingPage.classList.add("hidden");
+                    btnUploadNew.classList.remove("hidden");
+                    resultsPage.classList.remove("hidden");
+                    
+                    renderDashboard();
+                } catch (err) {
+                    errorBox.textContent = "⚠️ Error: " + err.message;
+                    errorBox.classList.remove("hidden");
+                    fileUploader.value = "";
+                } finally {
+                    spinner.classList.add("hidden");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        btnUploadNew.addEventListener("click", () => {
+            appState.fileName = "";
+            appState.fileSize = 0;
+            appState.results = [];
+            appState.counts = { "OK": 0, "OK (VERIFY)": 0, "ERROR": 0, "ERROR (VERIFY)": 0, "PENDING": 0, "MANUAL REVIEW": 0 };
+            appState.exportTimestamp = null;
+            appState.searchQuery = "";
+            txtSearch.value = "";
+            fileUploader.value = "";
+
+            landingPage.classList.remove("hidden");
+            btnUploadNew.classList.add("hidden");
+            resultsPage.classList.add("hidden");
+            errorBox.classList.add("hidden");
+        });
+
+        // Search Input
+        txtSearch.addEventListener("input", (e) => {
+            appState.searchQuery = e.target.value;
+            renderTable();
+        });
+
+        // Filter Pills
+        const pills = document.querySelectorAll(".filter-pill");
+        pills.forEach(pill => {
+            pill.addEventListener("click", (e) => {
+                pills.forEach(p => {
+                    p.classList.remove("bg-indigo-600", "text-white");
+                    p.classList.add("bg-slate-800", "text-slate-300");
+                });
+                pill.classList.remove("bg-slate-800", "text-slate-300");
+                pill.classList.add("bg-indigo-600", "text-white");
+                
+                appState.activeFilter = pill.getAttribute("data-filter");
+                renderTable();
+            });
+        });
+
+        function renderDashboard() {
+            txtFileName.textContent = appState.fileName;
+            txtFileSize.textContent = `(${(appState.fileSize / 1024).toFixed(1)} KB)`;
+            txtExportDate.textContent = appState.exportTimestamp ? appState.exportTimestamp.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : "N/A";
+
+            // Update Metrics
+            const total = appState.results.length;
+            const errors = appState.counts["ERROR"] + appState.counts["ERROR (VERIFY)"];
+            
+            document.getElementById("kpiTotal").textContent = total;
+            document.getElementById("kpiOk").textContent = appState.counts["OK"];
+            document.getElementById("kpiVerify").textContent = appState.counts["OK (VERIFY)"];
+            document.getElementById("kpiErrors").textContent = errors;
+            document.getElementById("kpiErrors").className = "text-3xl font-bold mt-2 " + (errors > 0 ? "text-red-500" : "text-slate-100");
+            document.getElementById("kpiManual").textContent = appState.counts["MANUAL REVIEW"];
+            document.getElementById("kpiManual").className = "text-3xl font-bold mt-2 " + (appState.counts["MANUAL REVIEW"] > 0 ? "text-amber-500" : "text-slate-100");
+            document.getElementById("kpiPending").textContent = appState.counts["PENDING"];
+
+            renderTable();
+        }
+
+        function getFilteredResults() {
+            return appState.results.filter(r => {
+                // Search match
+                const searchMatch = r.item_key.toLowerCase().includes(appState.searchQuery.toLowerCase()) || 
+                                    r.prefix.toLowerCase().includes(appState.searchQuery.toLowerCase());
+                if (!searchMatch) return false;
+
+                // Status Filter match
+                const filter = appState.activeFilter;
+                if (filter === "Actionable") {
+                    return ["ERROR", "ERROR (VERIFY)", "MANUAL REVIEW", "PENDING"].includes(r.status);
+                } else if (filter === "ERROR") {
+                    return ["ERROR", "ERROR (VERIFY)"].includes(r.status);
+                } else if (filter === "MANUAL") {
+                    return r.status === "MANUAL REVIEW";
+                } else if (filter === "PENDING") {
+                    return r.status === "PENDING";
+                } else if (filter === "OK") {
+                    return ["OK", "OK (VERIFY)"].includes(r.status);
+                }
+                return true; // All
+            });
+        }
+
+        function renderTable() {
+            const filtered = getFilteredResults();
+            tableBody.innerHTML = "";
+
+            if (filtered.length === 0) {
+                tableBody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="p-8 text-center text-slate-400 text-sm">No records matched active search/filters.</td>
+                </tr>`;
+                return;
+            }
+
+            filtered.forEach(r => {
+                let badgeClass = "text-slate-100 bg-slate-800";
+                if (r.status === "OK") badgeClass = "text-emerald-300 bg-emerald-950 border border-emerald-700/60";
+                if (r.status === "OK (VERIFY)") badgeClass = "text-teal-300 bg-teal-950 border border-dashed border-teal-600/60";
+                if (r.status === "ERROR") badgeClass = "text-red-300 bg-red-950 border border-red-700/60";
+                if (r.status === "ERROR (VERIFY)") badgeClass = "text-red-300 bg-red-950 border border-dashed border-red-600/60";
+                if (r.status === "MANUAL REVIEW") badgeClass = "text-amber-300 bg-amber-950 border border-amber-700/60";
+                if (r.status === "PENDING") badgeClass = "text-slate-300 bg-slate-800 border border-slate-700/60";
+
+                const expTaxCode = extractCode(r.expected_tax) || "Blank";
+                const expIncCode = extractCode(r.expected_income) || "Blank";
+                const actTaxCode = extractCode(r.actual_tax) || "Blank";
+                const actIncCode = extractCode(r.actual_income) || "Blank";
+
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-800/40 border-b border-slate-800/80 transition";
+                tr.innerHTML = `
+                    <td class="p-4 font-semibold text-slate-200">${r.item_key}</td>
+                    <td class="p-4 text-center text-slate-400">${r.row_num}</td>
+                    <td class="p-4 text-slate-300">${r.prefix}</td>
+                    <td class="p-4 text-slate-300">${r.country}</td>
+                    <td class="p-4 text-center">
+                        <span class="inline-block text-xs font-semibold px-2 py-1 rounded-md ${badgeClass}">${r.status}</span>
+                    </td>
+                    <td class="p-4 text-slate-300 text-xs">${r.reason || "—"}</td>
+                    <td class="p-4 text-slate-400 font-mono text-xs">${expTaxCode}/${expIncCode}</td>
+                    <td class="p-4 text-slate-300 font-mono text-xs">${actTaxCode}/${actIncCode}</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // --- 3. EXCELJS EXPORTER LOGIC ---
+        document.getElementById("btnDlFiltered").addEventListener("click", () => {
+            const filtered = getFilteredResults();
+            downloadReport(filtered, `verification_report_filtered_${new Date().toISOString().slice(0,10)}.xlsx`);
+        });
+
+        document.getElementById("btnDlAll").addEventListener("click", () => {
+            downloadReport(appState.results, `verification_report_all_${new Date().toISOString().slice(0,10)}.xlsx`);
+        });
+
+        async function downloadReport(dataList, filename) {
+            if (dataList.length === 0) return;
+            const workbook = new ExcelJS.Workbook();
+            
+            // 1. Summary Sheet
+            const wsSummary = workbook.addWorksheet('Summary', { views: [{ showGridLines: true }] });
+            wsSummary.columns = [
+                { header: 'Status', key: 'status', width: 20 },
+                { header: 'Count', key: 'count', width: 12 }
+            ];
+            
+            // Recompute counts for the exported list
+            const currentCounts = { "OK": 0, "OK (VERIFY)": 0, "ERROR": 0, "ERROR (VERIFY)": 0, "PENDING": 0, "MANUAL REVIEW": 0 };
+            dataList.forEach(item => {
+                if (currentCounts[item.status] !== undefined) {
+                    currentCounts[item.status]++;
+                }
+            });
+
+            const statuses = ["OK", "OK (VERIFY)", "ERROR", "ERROR (VERIFY)", "PENDING", "MANUAL REVIEW"];
+            statuses.forEach(status => {
+                wsSummary.addRow({ status: status, count: currentCounts[status] });
+            });
+            
+            const headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+            const whiteBoldFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+            const arialFont = { name: 'Arial', size: 11 };
+            
+            const headerRow = wsSummary.getRow(1);
+            headerRow.fill = headerFill;
+            headerRow.font = whiteBoldFont;
+            headerRow.alignment = { horizontal: 'left', vertical: 'center' };
+            
+            for (let r = 2; r <= wsSummary.rowCount; r++) {
+                wsSummary.getRow(r).font = arialFont;
+            }
+            
+            // 2. Details Sheet
+            const wsDetails = workbook.addWorksheet('Verification Results', {
+                views: [{ state: 'frozen', ySplit: 1, showGridLines: true }]
+            });
+            
+            wsDetails.columns = [
+                { header: 'Item Key', key: 'itemKey', width: 18 },
+                { header: 'Row (Bonds sheet)', key: 'rowNum', width: 18 },
+                { header: 'Product (Prefix)', key: 'prefix', width: 25 },
+                { header: 'Country', key: 'country', width: 25 },
+                { header: 'Status', key: 'status', width: 15 },
+                { header: 'Reason', key: 'reason', width: 55 },
+                { header: 'Expected Tax & Reporting', key: 'expTax', width: 35 },
+                { header: 'Expected Income Code', key: 'expInc', width: 35 },
+                { header: 'Actual Tax & Reporting', key: 'actTax', width: 35 },
+                { header: 'Actual Income Code', key: 'actInc', width: 35 }
+            ];
+            
+            dataList.forEach(item => {
+                wsDetails.addRow({
+                    itemKey: item.item_key,
+                    rowNum: item.row_num,
+                    prefix: item.prefix,
+                    country: item.country,
+                    status: item.status,
+                    reason: item.reason,
+                    expTax: item.expected_tax,
+                    expInc: item.expected_income,
+                    actTax: item.actual_tax,
+                    actInc: item.actual_income
+                });
+            });
+            
+            const detailsHeaderRow = wsDetails.getRow(1);
+            detailsHeaderRow.fill = headerFill;
+            detailsHeaderRow.font = whiteBoldFont;
+            detailsHeaderRow.alignment = { horizontal: 'left', vertical: 'center' };
+            
+            const statusColors = {
+                "OK": "FFD1FAE5", "OK (VERIFY)": "FFD1FAE5",
+                "ERROR": "FFFEE2E2", "ERROR (VERIFY)": "FFFEE2E2",
+                "MANUAL REVIEW": "FFFEF3C7", "PENDING": "FFF3F4F6"
+            };
+            
+            const thinBorder = {
+                top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                right: { style: 'thin', color: { argb: 'FFD1D5DB' } }
+            };
+            
+            for (let r = 2; r <= wsDetails.rowCount; r++) {
+                const row = wsDetails.getRow(r);
+                row.font = arialFont;
+                const statusVal = row.getCell('status').value;
+                const colorHex = statusColors[statusVal];
+                
+                row.eachCell((cell, colNumber) => {
+                    cell.border = thinBorder;
+                    if (colNumber === 2 || colNumber === 5) {
+                        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                    } else if (colNumber === 6) {
+                        cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+                    } else {
+                        cell.alignment = { horizontal: 'left', vertical: 'middle' };
+                    }
+                    if (colNumber === 5 && colorHex) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorHex } };
+                    }
+                });
+            }
+            
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
